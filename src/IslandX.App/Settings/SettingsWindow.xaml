@@ -1,0 +1,547 @@
+<Window x:Class="IslandX.Settings.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="IslandX 设置"
+        Width="600" Height="880"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="{x:Null}"
+        ResizeMode="NoResize"
+        ShowInTaskbar="True"
+        WindowStartupLocation="CenterScreen"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="ClearType">
+
+    <!-- 自绘窗口装饰，不用系统标题栏。
+         代价是拖动、关闭要自己做，也拿不到贴边分屏和双击最大化 ——
+         对一个设置面板可以接受（它不是文档窗口）。
+         换来的是**和岛体同一套形状语言**：G3 连续曲率轮廓、纯黑、无发光。
+         系统标题栏那一条白边会让整页立刻看着像另一个程序。
+
+         轮廓用产品里那份 Squircle（见 .cs 的 UpdateShape），不是 CornerRadius ——
+         普通圆角在圆弧与直线交接处曲率突变，而这枚窗口的剪影是最容易看出那道接缝的地方。 -->
+
+    <Window.Resources>
+
+        <!-- ===== 文字 ===== -->
+
+        <Style TargetType="TextBlock" x:Key="WindowTitle">
+            <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Foreground" Value="#F2FFFFFF"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style TargetType="TextBlock" x:Key="SectionTitle">
+            <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Foreground" Value="#7AFFFFFF"/>
+            <Setter Property="Margin" Value="4,22,0,9"/>
+        </Style>
+
+        <Style TargetType="TextBlock" x:Key="RowLabel">
+            <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+            <Setter Property="FontSize" Value="13.5"/>
+            <Setter Property="Foreground" Value="#EDFFFFFF"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- 说明文字。开关本身说不清代价，而"会联网"、"要定位"这种事
+             必须写在用户点它之前就看得到的地方 -->
+        <Style TargetType="TextBlock" x:Key="Hint">
+            <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="Foreground" Value="#73FFFFFF"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="LineHeight" Value="17"/>
+            <Setter Property="Margin" Value="0,5,0,0"/>
+        </Style>
+
+        <!-- ===== 卡片 ===== -->
+        <!-- 分节靠卡片而不是分隔线：一条 1px 的横线在纯黑底上几乎看不见，
+             而看得见的那种又太抢戏。卡片用比窗口底色亮一档的填充，边界自然出现。
+             这里用 CornerRadius 而非 Squircle —— 12px 圆角嵌在暗色卡片里，
+             G3 与圆弧的差别肉眼分辨不出，不值得为它每张卡都挂一个 Path。
+             窗口剪影不一样，那是贴着桌面看的，所以那里用真 G3。 -->
+        <Style TargetType="Border" x:Key="Card">
+            <Setter Property="Background" Value="#14141A"/>
+            <Setter Property="BorderBrush" Value="#14FFFFFF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Padding" Value="16,14"/>
+        </Style>
+
+        <!-- ===== 胶囊开关 =====
+             用胶囊而不是勾选框，是因为岛体本身就是一枚胶囊 ——
+             同一个形状语言在设置页里复用一次，两者才像一个产品。
+             开启时轨道是近白、旋钮是近黑，正好是岛体"白字黑底"的反转。 -->
+        <Style TargetType="CheckBox" x:Key="Switch">
+            <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+            <Setter Property="FontSize" Value="13.5"/>
+            <Setter Property="Foreground" Value="#EDFFFFFF"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <!-- 整行可点：标签在左、胶囊贴右。
+                             只有胶囊可点的话，命中区只有 40×22，而这一行有 500 宽 -->
+                        <Grid Background="Transparent">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <ContentPresenter VerticalAlignment="Center" Margin="0,0,16,0"/>
+
+                            <Border x:Name="Track" Grid.Column="1"
+                                    Width="40" Height="22" CornerRadius="11"
+                                    BorderThickness="1"
+                                    VerticalAlignment="Center">
+                                <!-- 画刷写成实例而不是引用共享资源：下面要对它的 Color
+                                     做动画，而 Freeze 过的共享画刷动不了 -->
+                                <Border.Background>
+                                    <SolidColorBrush Color="#3DFFFFFF"/>
+                                </Border.Background>
+                                <Border.BorderBrush>
+                                    <SolidColorBrush Color="#2EFFFFFF"/>
+                                </Border.BorderBrush>
+
+                                <!-- 旋钮**颜色恒定**，只有轨道变亮。
+                                     一开始是旋钮（亮→暗）与轨道（暗→亮）同时反向变，
+                                     那必然在中点撞成同一个灰 —— 连拍里能看到有一帧旋钮
+                                     整个糊进轨道。不是调曲线能解决的：两条反向的渐变一定相交。
+                                     去掉一条就没有交叉了，动画也少一个。
+                                     代价是 OFF 态的轨道得抬亮一档（#1F → #3D），
+                                     否则近黑的旋钮在近黑的轨道上看不见。 -->
+                                <Border x:Name="Knob"
+                                        Width="16" Height="16" CornerRadius="8"
+                                        HorizontalAlignment="Left"
+                                        Margin="2,0,0,0">
+                                    <Border.Background>
+                                        <SolidColorBrush Color="#FF0F0F13"/>
+                                    </Border.Background>
+                                    <!-- 位移用 Transform 而不是改 Margin 或对齐：
+                                         Margin 是 AffectsMeasure，翻一次开关就走一次布局。
+                                         这里必须**预先挂一个实例**，动画才有东西可动 ——
+                                         模板里的 TranslateTransform 起了名也不能当 TargetName，
+                                         所以走属性路径 (RenderTransform).(TranslateTransform.X)。 -->
+                                    <Border.RenderTransform>
+                                        <TranslateTransform/>
+                                    </Border.RenderTransform>
+                                </Border>
+                            </Border>
+                        </Grid>
+
+                        <ControlTemplate.Triggers>
+                            <!-- 开 / 关的手感刻意不对称，与岛体同一条规矩：
+                                 **进场要弹，退场不回弹**（README「Split」一节的实测值：
+                                 进场 ζ0.58 过冲约 11%，退场 ζ0.92 且更快）。
+                                 开关也是同一回事 —— 打开是"东西来了"，值得弹一下；
+                                 关闭是"结束了"，还慢悠悠回弹只是拖着人等。
+
+                                 颜色一律不过冲。这也是岛体那边定过的：
+                                 透明度/颜色冲过终点再回落会让人看到一次闪。 -->
+                            <Trigger Property="IsChecked" Value="True">
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <!-- 18 是终点，中途掠到 21（过冲 17%）再落回。
+                                                 **刻意比岛体的 11–12% 大。** 那个百分比是在
+                                                 200–600px 的宽高上调出来的，换算到 18px 行程
+                                                 只有 2px —— 比例一样，知觉上等于没有。
+                                                 同一个比例不能跨 20 倍的尺寸照搬。 -->
+                                            <DoubleAnimationUsingKeyFrames
+                                                Storyboard.TargetName="Knob"
+                                                Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)">
+                                                <EasingDoubleKeyFrame KeyTime="0:0:0.13" Value="21">
+                                                    <EasingDoubleKeyFrame.EasingFunction>
+                                                        <CubicEase EasingMode="EaseOut"/>
+                                                    </EasingDoubleKeyFrame.EasingFunction>
+                                                </EasingDoubleKeyFrame>
+                                                <EasingDoubleKeyFrame KeyTime="0:0:0.25" Value="18">
+                                                    <EasingDoubleKeyFrame.EasingFunction>
+                                                        <SineEase EasingMode="EaseInOut"/>
+                                                    </EasingDoubleKeyFrame.EasingFunction>
+                                                </EasingDoubleKeyFrame>
+                                            </DoubleAnimationUsingKeyFrames>
+
+                                            <ColorAnimation
+                                                Storyboard.TargetName="Track"
+                                                Storyboard.TargetProperty="Background.Color"
+                                                To="#EDFFFFFF" Duration="0:0:0.16"/>
+                                            <ColorAnimation
+                                                Storyboard.TargetName="Track"
+                                                Storyboard.TargetProperty="BorderBrush.Color"
+                                                To="#EDFFFFFF" Duration="0:0:0.16"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <!-- 回程不过冲、更快（160ms vs 240ms） -->
+                                            <DoubleAnimation
+                                                Storyboard.TargetName="Knob"
+                                                Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                                To="0" Duration="0:0:0.16">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+
+                                            <ColorAnimation
+                                                Storyboard.TargetName="Track"
+                                                Storyboard.TargetProperty="Background.Color"
+                                                To="#3DFFFFFF" Duration="0:0:0.16"/>
+                                            <ColorAnimation
+                                                Storyboard.TargetName="Track"
+                                                Storyboard.TargetProperty="BorderBrush.Color"
+                                                To="#2EFFFFFF" Duration="0:0:0.16"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
+                            </Trigger>
+
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Track" Property="BorderBrush">
+                                    <Setter.Value>
+                                        <SolidColorBrush Color="#5CFFFFFF"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Provider 列表里的开关：同一套，只是行距紧一点 -->
+        <Style TargetType="CheckBox" BasedOn="{StaticResource Switch}"/>
+
+        <!-- 分段选择器的视觉全在代码里（见 BuildSegments）：
+             它需要"亮字层 / 白胶囊 / 暗字层裁剪在胶囊内"三层叠放，
+             而第三层的裁剪要跟着胶囊一起做动画 —— 这在纯 XAML 模板里表达不出来。 -->
+
+        <!-- ===== 输入框 ===== -->
+        <Style TargetType="TextBox">
+            <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="#EDFFFFFF"/>
+            <Setter Property="CaretBrush" Value="#EDFFFFFF"/>
+            <Setter Property="SelectionBrush" Value="#40FFFFFF"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Shell" CornerRadius="8"
+                                Background="#1AFFFFFF"
+                                BorderBrush="#1FFFFFFF" BorderThickness="1"
+                                Padding="10,7">
+                            <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="Shell" Property="BorderBrush" Value="#66FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Shell" Property="BorderBrush" Value="#40FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ===== 按钮 ===== -->
+        <Style TargetType="Button">
+            <Setter Property="FontFamily" Value="{StaticResource UiFont}"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="Foreground" Value="#EDFFFFFF"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" CornerRadius="8"
+                                Background="#1AFFFFFF"
+                                BorderBrush="#1FFFFFFF" BorderThickness="1"
+                                Padding="14,7">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#2EFFFFFF"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#40FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 标题栏的关闭按钮：圆形，和岛体上的传输控件按钮同一套手感 -->
+        <Style TargetType="Button" x:Key="CloseGlyph">
+            <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="#B3FFFFFF"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Width="30" Height="30" CornerRadius="15"
+                                Background="Transparent">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#26FFFFFF"/>
+                                <Setter Property="Foreground" Value="#FFFFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 滚动条：默认那条是浅色主题的宽条，在纯黑上非常刺眼 -->
+        <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="8"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Track x:Name="PART_Track" IsDirectionReversed="True" Margin="1,4">
+                            <Track.Thumb>
+                                <Thumb>
+                                    <Thumb.Template>
+                                        <ControlTemplate TargetType="Thumb">
+                                            <Border CornerRadius="3" Background="#33FFFFFF" Width="6"/>
+                                        </ControlTemplate>
+                                    </Thumb.Template>
+                                </Thumb>
+                            </Track.Thumb>
+                        </Track>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <!-- 窗口轮廓。Data 在 .cs 里用 Squircle 生成，与岛体同一份实现 -->
+        <Path x:Name="Backdrop" Fill="#0B0B0E" Stroke="#1FFFFFFF" StrokeThickness="1"/>
+
+        <Grid Margin="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- ===== 自绘标题栏（可拖动） ===== -->
+            <Grid x:Name="TitleBar" Height="52" Background="Transparent">
+                <TextBlock Text="IslandX 设置" Style="{StaticResource WindowTitle}"
+                           Margin="24,0,0,0"/>
+                <Button x:Name="CloseButton" Style="{StaticResource CloseGlyph}"
+                        Content="&#xE8BB;"
+                        HorizontalAlignment="Right" Margin="0,0,12,0"
+                        ToolTip="关闭"/>
+            </Grid>
+
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="20,0,12,20">
+                <StackPanel>
+
+                    <!-- ===== 外观 ===== -->
+                    <TextBlock Text="外观" Style="{StaticResource SectionTitle}" Margin="4,4,0,9"/>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <CheckBox x:Name="DotModeBox" Content="灵动点模式"/>
+                            <TextBlock Style="{StaticResource Hint}"
+                                       Text="收成一条 8px 的细横条，不干扰。太小了不好点，所以务必留一个能用的热键。"/>
+
+                            <Border Height="1" Background="#0FFFFFFF" Margin="0,14"/>
+
+                            <CheckBox x:Name="PulseBox" Content="频谱随音乐律动"/>
+                            <TextBlock Style="{StaticResource Hint}"
+                                       Text="用 WASAPI 环回采集抓系统播放的声音驱动频谱条。需要持续渲染，约 3% 单核。"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ===== 歌词 ===== -->
+                    <TextBlock Text="歌词" Style="{StaticResource SectionTitle}"/>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <CheckBox x:Name="LyricsBox" Content="显示逐句歌词"/>
+                            <TextBlock Style="{StaticResource Hint}"
+                                       Text="⚠ 会联网：把当前播放的曲目名发到 music.163.com 换取歌词。关掉之后不会再有任何请求发往第三方；缓存只在内存里，退出即消失，不落盘。"/>
+
+                            <Border Height="1" Background="#0FFFFFFF" Margin="0,14"/>
+
+                            <TextBlock Text="外语歌的翻译" Style="{StaticResource RowLabel}"/>
+                            <!-- 分段条整体由 BuildSegments() 在代码里搭起来。
+                                 三层文字/指示器/命中区必须严格同宽，用同一份数据、
+                                 同一套字号内边距生成才保证得了 —— 在 XAML 里写三遍
+                                 迟早对不齐，而对不齐的表现是滑到位了字却错半个像素。 -->
+                            <Border Background="#14FFFFFF" CornerRadius="10" Padding="3"
+                                    HorizontalAlignment="Left" Margin="0,9,0,0">
+                                <Grid x:Name="SegRoot"/>
+                            </Border>
+                            <TextBlock Style="{StaticResource Hint}"
+                                       Text="中文歌不受影响 —— 数据源只对外语歌给译文，中文歌那个字段本来就是空的，所以「非简体中文才翻译」是自动的。不额外增加任何请求。"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ===== 天气 ===== -->
+                    <TextBlock Text="天气" Style="{StaticResource SectionTitle}"/>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <CheckBox x:Name="WeatherBox" Content="降水提醒与气象灾害预警"/>
+                            <TextBlock Style="{StaticResource Hint}"
+                                       Text="⚠ 要定位 + 联网：坐标会发给 open-meteo（分钟级降水预报）与 nmc.cn（中国气象局预警）。发出前降到 2 位小数，约 1km。"/>
+
+                            <Border Height="1" Background="#0FFFFFFF" Margin="0,14"/>
+
+                            <TextBlock Text="位置" Style="{StaticResource RowLabel}"/>
+                            <TextBlock Style="{StaticResource Hint}"
+                                       Text="留空 = 用系统定位。填了就不再调用定位 API —— 可以只填个大概的地点，不必给出真实住址。"/>
+
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="86"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="86"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Text="纬度" Style="{StaticResource RowLabel}"
+                                           FontSize="12.5" Margin="0,0,8,0"/>
+                                <TextBox x:Name="LatBox" Grid.Column="1"/>
+                                <TextBlock Text="经度" Style="{StaticResource RowLabel}"
+                                           FontSize="12.5" Grid.Column="2" Margin="14,0,8,0"/>
+                                <TextBox x:Name="LonBox" Grid.Column="3"/>
+                                <Button x:Name="DetectButton" Grid.Column="4" Content="检测一次"
+                                        HorizontalAlignment="Left" Margin="14,0,0,0"/>
+                            </Grid>
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="行政区" Style="{StaticResource RowLabel}"
+                                           FontSize="12.5" Margin="0,0,8,0"/>
+                                <TextBox x:Name="RegionBox" Grid.Column="1"/>
+                            </Grid>
+
+                            <TextBlock Style="{StaticResource Hint}"
+                                       Text="形如「辽宁省沈阳市」。气象预警按行政区组织，而系统定位只给坐标，中间要查一次 Nominatim；填了这一项就跳过那次查询。"/>
+
+                            <TextBlock x:Name="DetectStatus" Style="{StaticResource Hint}"
+                                       Margin="0,10,0,0" Visibility="Collapsed"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ===== 联动 ===== -->
+                    <TextBlock Text="联动" Style="{StaticResource SectionTitle}"/>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <CheckBox x:Name="PhiraBox" Content="Phira 成绩提醒"/>
+                            <TextBlock Style="{StaticResource Hint}"
+                                       Text="刷新个人最好成绩时，在岛上弹一条「曲名 · 难度 · 分数 · 准度 · 评级」。全程本地，不联网。"/>
+                            <TextBlock Style="{StaticResource Hint}"
+                                       Text="⚠ 会读 Phira 的存档 data/data.json（按运行中的 phira-main 进程定位，不扫盘）。只解析曲目与成绩，存档里的账号与登录凭据一律不读。"/>
+                            <TextBlock Style="{StaticResource Hint}"
+                                       Text="⚠ 只在「这首第一次打」或「刷新纪录」时触发 —— 那是 Phira 自己写存档的时机，打了没进步就不会有反应。它报的是刷新纪录，不是打完一局。"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ===== 事件 ===== -->
+                    <TextBlock Text="显示哪些事件" Style="{StaticResource SectionTitle}"/>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,12"
+                                       Text="这些事件浮现几秒后自动退场。媒体与兜底时钟不在此列 —— 关掉它们岛体就什么都不剩了。"/>
+                            <StackPanel x:Name="ProviderList"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ===== 热键 ===== -->
+                    <TextBlock Text="全局热键" Style="{StaticResource SectionTitle}"/>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,14"
+                                       Text="点输入框，再按组合键即可录入。⚠ 录进去不等于能用：被低级键盘钩子截走的组合，注册会报成功但按下去毫无反应（本机 Ctrl+Alt+D 就是这样）。所以录完请当场按一下，右侧会告诉你它到底有没有响。"/>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="96"/>
+                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Text="展开 / 收起" Style="{StaticResource RowLabel}"
+                                           FontSize="12.5"/>
+                                <TextBox x:Name="ExpandHotkeyBox" Grid.Column="1" IsReadOnly="True"
+                                         Cursor="Hand" ToolTip="点这里，然后按组合键"/>
+                                <TextBlock x:Name="ExpandHotkeyStatus" Grid.Column="2"
+                                           Style="{StaticResource Hint}" Margin="12,0,0,0"
+                                           VerticalAlignment="Center"/>
+
+                                <TextBlock Text="灵动点模式" Style="{StaticResource RowLabel}"
+                                           FontSize="12.5" Grid.Row="1" Margin="0,10,0,0"/>
+                                <TextBox x:Name="DotHotkeyBox" Grid.Row="1" Grid.Column="1"
+                                         IsReadOnly="True" Cursor="Hand" Margin="0,10,0,0"
+                                         ToolTip="点这里，然后按组合键"/>
+                                <TextBlock x:Name="DotHotkeyStatus" Grid.Row="1" Grid.Column="2"
+                                           Style="{StaticResource Hint}" Margin="12,10,0,0"
+                                           VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ===== 系统 ===== -->
+                    <TextBlock Text="系统" Style="{StaticResource SectionTitle}"/>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <CheckBox x:Name="AutoStartBox" Content="开机自动启动"/>
+                            <TextBlock x:Name="AutoStartStatus" Style="{StaticResource Hint}"
+                                       Visibility="Collapsed"/>
+
+                            <Border Height="1" Background="#0FFFFFFF" Margin="0,14"/>
+
+                            <Button x:Name="OpenFolderButton" Content="打开配置文件夹"
+                                    HorizontalAlignment="Left"/>
+                            <TextBlock Style="{StaticResource Hint}"
+                                       Text="config.json 就在里面。这一页的每一项都会即时写回它，不需要手改；手改的内容重启后生效。"/>
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- 底栏。刻意没有「确定 / 取消」—— 每一项都即时生效即时保存。
+                 攒一批再提交反而让人不确定改动到底有没有落地，
+                 而这些设置全都能立刻在岛体上看到效果，正是即时生效最合适的场合 -->
+            <Grid Grid.Row="2" Margin="24,0,24,18">
+                <TextBlock Style="{StaticResource Hint}" Margin="0"
+                           VerticalAlignment="Center" Text="改动即时生效并保存"/>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

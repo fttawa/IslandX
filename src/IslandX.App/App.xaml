@@ -1,0 +1,13 @@
+<Application x:Class="IslandX.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+    <Application.Resources>
+        <!-- 字体放在应用级：岛体窗口和设置窗口都要用。
+             原先只定义在 IslandWindow 的局部资源里，第二个窗口就找不到了。
+             局部定义会遮蔽这里的同名项，所以 IslandWindow 那份已经删掉，
+             免得两处各写一遍、日后改一处漏一处。 -->
+        <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+        <FontFamily x:Key="UiFont">Microsoft YaHei UI, Segoe UI</FontFamily>
+    </Application.Resources>
+</Application>

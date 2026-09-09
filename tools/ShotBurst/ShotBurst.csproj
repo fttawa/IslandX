@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>ShotBurst</AssemblyName>
+    <RootNamespace>ShotBurst</RootNamespace>
+    <SelfContained>false</SelfContained>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+
+    <!-- 为了 System.Drawing。不用 PowerShell 的 Add-Type 干这件事：
+         .NET 10 上 Bitmap/Graphics 的实现被拆进了 System.Private.Windows.GdiPlus
+         等一串内部程序集，Add-Type 逐个 -ReferencedAssemblies 补不齐，
+         报的是 CS0012「类型 IBitmap 在未引用的程序集中定义」。
+         这与当初 BridgeViz 那次是同一类问题，结论也一样：写成真项目。 -->
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+
+</Project>

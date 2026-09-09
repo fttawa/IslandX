@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/IslandX.App/IslandX.App.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/MediaProbe/MediaProbe.csproj" />
+  </Folder>
+</Solution>

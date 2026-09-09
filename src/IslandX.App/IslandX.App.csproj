@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- 19041 版本号是为了拿到 CsWinRT 投影，可直接调用 WinRT 媒体会话 API -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Platforms>x64</Platforms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <!-- 托盘图标使用 WinForms 的 NotifyIcon，避免引入第三方依赖 -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>IslandX</AssemblyName>
+    <RootNamespace>IslandX</RootNamespace>
+    <SelfContained>false</SelfContained>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- LibraryImport 源生成器产出的 P/Invoke 封送代码需要 unsafe -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- WFO0003: WinForms 建议用 ApplicationHighDpiMode 而非 manifest 声明 DPI。
+         本项目由 WPF 主导渲染，PerMonitorV2 必须在 manifest 里声明；
+         WinForms 仅用于托盘图标，不参与 DPI 布局，故抑制该建议。 -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WinForms/GDI+ 只用于托盘 NotifyIcon 与图标绘制。移除这两个隐式 using：
+         否则 Application、Color 等类型会与 WPF 的同名类型产生歧义。用到处显式 using。 -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 几何验证工具要直接调 internal 的 Squircle / FluidBridge。
+         把它们改成 public 只为测试不合适，用 InternalsVisibleTo 更干净：
+         验证的是产品代码本身，不是复制一份到工具里。 -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>BridgeViz</_Parameter1>
+    </AssemblyAttribute>
+
+    <!-- WeatherProbe 要调 internal 的 GeoLocation.ParseRegion（喂一段 Nominatim
+         响应、断言行政区层级排序）。同上：验产品代码本身，不复制一份到工具里。 -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>WeatherProbe</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

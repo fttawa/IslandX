@@ -1,0 +1,387 @@
+<Window x:Class="IslandX.IslandWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:r="clr-namespace:IslandX.Rendering"
+        Title="IslandX"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="{x:Null}"
+        ShowInTaskbar="False"
+        Topmost="True"
+        ResizeMode="NoResize"
+        SizeToContent="Manual"
+        Width="640" Height="168"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="ClearType">
+
+    <Window.Resources>
+        <!-- IconFont / UiFont 已移到 App.xaml（设置窗口也要用），这里不再重复定义 -->
+
+        <!-- 媒体传输控件按钮：圆形，悬停提亮 -->
+        <Style x:Key="TransportButton" TargetType="Border">
+            <Setter Property="Width" Value="34"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="CornerRadius" Value="17"/>
+            <Setter Property="Background" Value="#14FFFFFF"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#2EFFFFFF"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="TransportGlyph" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Foreground" Value="#F2FFFFFF"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="IsHitTestVisible" Value="False"/>
+        </Style>
+    </Window.Resources>
+
+    <!-- 根容器不设 Background：透明区域不参与命中测试，鼠标可穿透到下方窗口 -->
+    <Grid>
+        <!-- 这一层的尺寸恒定（BodyCanvas 常量），岛体形状画在其中居中位置。
+             整体上移由 LayoutShift 完成，使形状顶边始终贴在 y=6 —— 全程不触发布局。 -->
+        <Grid x:Name="IslandLayout"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Top"
+              Margin="0,6,0,0">
+            <Grid.RenderTransform>
+                <TranslateTransform x:Name="LayoutShift"/>
+            </Grid.RenderTransform>
+
+            <!-- 感应区：灵动点态时提供比岛体更大的可命中范围。
+
+                 背景必须是 #01FFFFFF（alpha=1）而不是 Transparent。
+                 在分层透明窗口里，鼠标能否落到窗口上由**像素的 alpha** 决定：
+                 Transparent 渲染出 alpha=0，系统会直接穿透、连 WM_NCHITTEST 都不发，
+                 于是 WPF 的命中测试根本没有机会参与 —— 感应区形同不存在。
+                 alpha=1 肉眼不可见，但足以让系统把消息投过来。 -->
+            <Border x:Name="HoverZone"
+                    Width="100" Height="100"
+                    Background="#01FFFFFF"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                <Border.RenderTransform>
+                    <ScaleTransform x:Name="HoverScale" CenterX="50" CenterY="50"/>
+                </Border.RenderTransform>
+            </Border>
+
+            <!-- 岛体。尺寸恒定，形变只体现在 IslandShape 的几何上。
+                 用自绘元素而非 Path：Path 换 Data 会触发 InvalidateMeasure，
+                 见 Rendering/IslandShape.cs。 -->
+            <Grid x:Name="IslandBody"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center"
+                  Cursor="Hand">
+
+                <r:IslandShape x:Name="BodyShape"/>
+
+                <!-- Split 态右侧的瞬时事件圆。只放一个字形 —— 瞬时事件的信息量小，
+                     塞文字会把岛体撑得很长，而真机上这里也就是一个图标。
+                     位置由 SplitShift 每帧推到桥的右端，不走布局。 -->
+                <TextBlock x:Name="SplitGlyph"
+                           FontFamily="{StaticResource IconFont}"
+                           FontSize="15"
+                           Foreground="#F2FFFFFF"
+                           HorizontalAlignment="Left"
+                           VerticalAlignment="Top"
+                           Opacity="0"
+                           IsHitTestVisible="False">
+                    <TextBlock.RenderTransform>
+                        <TransformGroup>
+                            <ScaleTransform x:Name="SplitScale"/>
+                            <TranslateTransform x:Name="SplitShift"/>
+                        </TransformGroup>
+                    </TextBlock.RenderTransform>
+                </TextBlock>
+
+                <!-- ContentHost 的 Clip 每帧跟随岛体的 G3 轮廓，形变时内容不会溢出边缘 -->
+                <Grid x:Name="ContentHost">
+
+                    <!-- 切歌时的旧内容快照，与新内容交叉淡化。
+                         用一张位图而不是第二套控件：常态零额外开销，
+                         转场期间也只多一个 Image 的渲染，远低于一整套文本+布局。 -->
+                    <Image x:Name="TransitionLayer"
+                           Visibility="Collapsed"
+                           IsHitTestVisible="False"
+                           Stretch="None"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center">
+                        <Image.RenderTransform>
+                            <TranslateTransform x:Name="TransitionShift"/>
+                        </Image.RenderTransform>
+                    </Image>
+
+                    <Grid x:Name="ContentLayers">
+                        <Grid.RenderTransform>
+                            <TranslateTransform x:Name="ContentLayersShift"/>
+                        </Grid.RenderTransform>
+
+                    <!-- ===== 收起态：封面贴左缘 · 文本居中 · 频谱贴右缘 =====
+
+                         三者都**居中放置、再用 RenderTransform 推到位**，而不是靠
+                         StackPanel 横向排列。两个理由：
+
+                         1. 频谱要钉在岛体右边缘。横向排列时它紧跟在文本右侧，
+                            歌词一短就跟着左移贴上来 —— 而它该待在边上。
+                         2. 位置要有动画。布局宽度是**瞬间**生效的，而岛体宽度走弹簧，
+                            靠布局定位就会看到封面/频谱瞬间跳到新位置、岛体却还在平滑收拢。
+                            改用 Transform 之后它们每帧跟着 _width.Current 走，全程同步，
+                            而且换句不再触发布局。
+
+                         容器宽度恒定（BodyCanvasWidth），内容居中，超出的由 ContentHost.Clip 裁掉。 -->
+                    <Grid x:Name="CompactContent" HorizontalAlignment="Center" Opacity="1">
+                        <Grid.RenderTransform>
+                            <TranslateTransform x:Name="CompactTransform"/>
+                        </Grid.RenderTransform>
+
+                        <!-- 缩略图：有封面时显示封面，否则回落为字形图标 -->
+                        <Grid x:Name="CompactArt"
+                              Width="28" Height="28"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center">
+                            <Grid.RenderTransform>
+                                <TranslateTransform x:Name="CompactArtShift"/>
+                            </Grid.RenderTransform>
+                            <Border x:Name="CompactArtBackdrop" Background="#1FFFFFFF"/>
+                            <Image x:Name="CompactArtwork" Stretch="UniformToFill"/>
+                            <TextBlock x:Name="CompactGlyph"
+                                       FontFamily="{StaticResource IconFont}"
+                                       FontSize="14"
+                                       Foreground="#D9FFFFFF"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <!-- 文本槽。「歌名 + 艺人」与「歌词」两组**叠在同一位置**交叉切换：
+                             开了歌词之后歌名只在换歌时站一会儿就让位，
+                             歌词接管这个位置成为主体（详见 README 的「歌词」一节）。
+
+                             宽度恒定（= LyricMaxWidth）且居中，所以它的中心永远是岛体中心。
+                             两组各自也居中，于是岛体伸缩时文本原地不动 —— 动的是两侧的封面与频谱。 -->
+                        <Grid x:Name="CompactTextSlot"
+                              Width="340"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center">
+                            <Grid.RenderTransform>
+                                <!-- 文本槽不在胶囊正中，而是在"两侧固定占用之间"的正中。
+                                     左边永远有封面/图标，右边只有内边距（媒体时还有频谱），
+                                     两侧不等宽，所以居中的是**内容整体**而不是文本。
+                                     偏移量由 CompactSides 给，与胶囊宽度同源。 -->
+                                <TranslateTransform x:Name="CompactTextShift"/>
+                            </Grid.RenderTransform>
+
+                            <StackPanel x:Name="TitleGroup"
+                                        Orientation="Horizontal"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center">
+                                <TextBlock x:Name="CompactTitle"
+                                           FontFamily="{StaticResource UiFont}"
+                                           FontSize="15"
+                                           FontWeight="Medium"
+                                           Foreground="#F7FFFFFF"
+                                           TextTrimming="CharacterEllipsis"
+                                           VerticalAlignment="Center"/>
+
+                                <TextBlock x:Name="CompactSubtitle"
+                                           FontFamily="{StaticResource UiFont}"
+                                           FontSize="12"
+                                           Foreground="#8FFFFFFF"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxWidth="240"
+                                           Margin="10,1,0,0"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+
+                            <!-- 歌词双层。逐句切换要「旧句退场」与「新句进场」同时进行，
+                                 单层做不到 —— 换文本是瞬间的，换完就没有旧句可退了。
+                                 两层轮流承担进/出角色（ping-pong），谁是谁由 _lyricUseB 决定。
+
+                                 用自绘的 LyricLayer 而不是 TextBlock + BlurEffect：
+                                 WPF 的 BlurEffect 只有各向同性的 Radius，做不出**只在水平方向**
+                                 的模糊，而那正是"横向拖影"观感的来源。详见 LyricLayer 的注释。
+
+                                 高度固定 40 —— 自绘元素的尺寸由父容器给定，
+                                 内部按 ActualWidth/ActualHeight 居中，全程不触发布局。
+                                 40 是按**双行**（原文 14px + 译文 11.5px + 2px 行距 ≈ 36）留的，
+                                 单行时多出来的高度不影响观感：两种情况都是绕同一个中心居中，
+                                 而这个中心就是岛体中心（这一路容器全是 VerticalAlignment=Center）。
+                                 固定值而非随行数改：改高度要走布局，正是这里要避免的。 -->
+                            <Grid x:Name="LyricGroup"
+                                  VerticalAlignment="Center"
+                                  Opacity="0">
+                                <r:LyricLayer x:Name="LyricA" Height="40">
+                                    <r:LyricLayer.RenderTransform>
+                                        <TranslateTransform x:Name="LyricAShift"/>
+                                    </r:LyricLayer.RenderTransform>
+                                </r:LyricLayer>
+
+                                <r:LyricLayer x:Name="LyricB" Height="40">
+                                    <r:LyricLayer.RenderTransform>
+                                        <TranslateTransform x:Name="LyricBShift"/>
+                                    </r:LyricLayer.RenderTransform>
+                                </r:LyricLayer>
+                            </Grid>
+                        </Grid>
+
+                        <!-- 频谱竖条：跟着音乐跳，静止时是一排小圆点。钉在岛体右边缘 -->
+                        <r:SpectrumBars x:Name="Spectrum"
+                                        Height="20"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        Visibility="Collapsed">
+                            <r:SpectrumBars.RenderTransform>
+                                <TranslateTransform x:Name="SpectrumShift"/>
+                            </r:SpectrumBars.RenderTransform>
+                        </r:SpectrumBars>
+                    </Grid>
+
+                    <!-- ===== 展开态（宽度由代码按标题实测宽度设置）===== -->
+                    <Grid x:Name="ExpandedContent" HorizontalAlignment="Center" Opacity="0">
+                        <Grid.RenderTransform>
+                            <TranslateTransform x:Name="ExpandedTransform"/>
+                        </Grid.RenderTransform>
+                        <Grid Margin="20,0,20,0" VerticalAlignment="Center">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- 封面，同样用 G3 圆角裁剪 -->
+                            <Grid x:Name="ExpandedArt"
+                                  Grid.Column="0"
+                                  Width="88" Height="88"
+                                  VerticalAlignment="Center">
+                                <Border Background="#1AFFFFFF"/>
+                                <Image x:Name="ExpandedArtwork" Stretch="UniformToFill"/>
+                                <TextBlock x:Name="ArtworkFallback"
+                                           FontFamily="{StaticResource IconFont}"
+                                           FontSize="30"
+                                           Foreground="#59FFFFFF"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <!-- 右侧信息区 -->
+                            <StackPanel Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center">
+                                <TextBlock x:Name="ExpandedTitle"
+                                           FontFamily="{StaticResource UiFont}"
+                                           FontSize="17"
+                                           FontWeight="SemiBold"
+                                           Foreground="#FAFFFFFF"
+                                           TextTrimming="CharacterEllipsis"/>
+
+                                <TextBlock x:Name="ExpandedSubtitle"
+                                           FontFamily="{StaticResource UiFont}"
+                                           FontSize="12"
+                                           Foreground="#99FFFFFF"
+                                           TextTrimming="CharacterEllipsis"
+                                           Margin="0,3,0,0"/>
+
+                                <!-- 进度条 -->
+                                <Border x:Name="ProgressTrack"
+                                        Height="3" CornerRadius="1.5"
+                                        Background="#24FFFFFF"
+                                        Margin="0,12,0,0"
+                                        HorizontalAlignment="Stretch">
+                                    <Border x:Name="ProgressFill"
+                                            CornerRadius="1.5"
+                                            Background="#E0FFFFFF"
+                                            HorizontalAlignment="Left"
+                                            Width="0"/>
+                                </Border>
+
+                                <!-- 迷你柱状图 + 横轴说明。天气用它画降水预报；
+                                     渲染层只知道"一排 0–1 的柱子"，不知道那是雨。 -->
+                                <StackPanel x:Name="ChartPanel"
+                                            Margin="0,12,0,0"
+                                            Visibility="Collapsed">
+                                    <r:MiniChart x:Name="Chart" Height="34"/>
+                                    <TextBlock x:Name="ChartCaption"
+                                               FontFamily="{StaticResource UiFont}"
+                                               FontSize="11"
+                                               Foreground="#8FFFFFFF"
+                                               Margin="0,6,0,0"
+                                               TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+
+                                <!-- 传输控件 -->
+                                <StackPanel x:Name="TransportPanel"
+                                            Orientation="Horizontal"
+                                            Margin="0,12,0,0">
+                                    <Border x:Name="PrevButton" Style="{StaticResource TransportButton}">
+                                        <TextBlock Text="&#xE892;" Style="{StaticResource TransportGlyph}"/>
+                                    </Border>
+                                    <Border x:Name="PlayButton" Style="{StaticResource TransportButton}" Margin="8,0,0,0">
+                                        <TextBlock x:Name="PlayPauseGlyph" Style="{StaticResource TransportGlyph}"/>
+                                    </Border>
+                                    <Border x:Name="NextButton" Style="{StaticResource TransportButton}" Margin="8,0,0,0">
+                                        <TextBlock Text="&#xE893;" Style="{StaticResource TransportGlyph}"/>
+                                    </Border>
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Grid>
+
+        <!-- ===== 右键工具栏 =====
+
+             它是 IslandLayout 的**兄弟**而不是子节点：IslandLayout 的尺寸由岛体画布
+             （560×140）定死，工具栏挂在岛体下方会超出那个范围。放进根 Grid 就与岛体
+             的布局彻底无关，纵向位置每帧由 ToolbarShift 跟着岛体底边推，不触发布局。
+
+             外观数值取自 E:\WinIsland（它没有右键工具栏，抄的是它自绘下拉菜单
+             与组件卡片的样式）：
+               外壳 —— settings/renderer.rs:445-480，
+                        描边 argb(40,255,255,255) 0.5px、
+                        阴影 argb(60,0,0,0) 偏移 (0,+2) 尺寸 +2 且**无高斯模糊**。
+                        底色**没有**用它那个 rgb(50,50,52)：那是它**设置窗口里**下拉菜单
+                        的颜色，而这条工具栏是贴在岛体上的，属于它 widget 卡片那一类 ——
+                        那类表面的底就是岛体自己的近黑。灰底贴在近黑岛体下面，
+                        看着像另一个程序的部件。这里用与 BodyShape 相同的 #FA000000
+               卡片 —— ui/widget/expanded/mod.rs:87-113，见 code-behind 的颜色常量
+
+             动效不抄它。WinIsland 那个下拉是纯 opacity 淡入淡出（每帧走剩余距离的
+             30%），紧挨着弹簧驱动的岛体会很出戏 —— 这里走本项目的
+             「进场要弹、退场不回弹」。 -->
+        <Grid x:Name="Toolbar"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Top"
+              Opacity="0"
+              Visibility="Collapsed"
+              IsHitTestVisible="False"
+              RenderTransformOrigin="0.5,0">
+            <Grid.RenderTransform>
+                <TransformGroup>
+                    <!-- 从顶边中央长出来：原点 0.5,0 让它看着像从岛体底下钻出 -->
+                    <ScaleTransform x:Name="ToolbarScale" ScaleX="0.86" ScaleY="0.86"/>
+                    <TranslateTransform x:Name="ToolbarShift"/>
+                </TransformGroup>
+            </Grid.RenderTransform>
+
+            <!-- 硬阴影：照抄 WinIsland，纯色 + 偏移，不加 BlurEffect。
+                 BlurEffect 会把这一层推上位图缓存，而它每帧都在动 —— 代价与观感不成正比 -->
+            <Path x:Name="ToolbarShadow" Fill="#3C000000" IsHitTestVisible="False"/>
+
+            <!-- 背板必须不透明：分层窗口按像素 alpha 决定鼠标是否穿透，
+                 alpha=0 的地方系统连 WM_NCHITTEST 都不发（见 HoverZone 的注释） -->
+            <Path x:Name="ToolbarBackdrop"
+                  Fill="#FA000000"
+                  Stroke="#28FFFFFF"
+                  StrokeThickness="0.5"/>
+
+            <StackPanel x:Name="ToolbarItems"
+                        Orientation="Horizontal"
+                        Margin="5"/>
+        </Grid>
+
+    </Grid>
+</Window>

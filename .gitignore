@@ -1,0 +1,17 @@
+# 构建产物
+bin/
+obj/
+dist/
+
+# 开发期的连拍与临时截图。docs/images 里是文档要用的那些，那些**要**入库
+shots/
+.scratch/
+*.tmp
+
+# 诊断日志（ISLANDX_DIAG=1 时生成，落在 %APPDATA%，这里只防手滑拷进来）
+diag.log
+
+# 编辑器
+.vs/
+.idea/
+*.user
