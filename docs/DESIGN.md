@@ -208,7 +208,7 @@ await CheckRainAsync(here, announce: !alerted);
 
 #### 样式来源：WinIsland 里其实没有这个东西
 
-参照物是 [WinIsland](https://github.com/Fon-Enthusiast/WinIsland)，但**它没有右键工具栏** ——
+参照物是 [WinIsland](https://github.com/WinIslandProject/WinIsland)，但**它没有右键工具栏** ——
 它岛体上的右键是「右键长按移动」（`src/window/app/input.rs:36-76`，4px 阈值，设置里可关），
 全仓 `WM_CONTEXTMENU` / `TrackPopupMenu` 零命中，唯一的菜单是托盘的**系统原生**菜单，
 没有任何可抄的样式数值。
