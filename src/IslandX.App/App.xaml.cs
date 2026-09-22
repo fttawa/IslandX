@@ -211,6 +211,9 @@ public partial class App : Application
             SetAutoStart = AutoStart.Set,
             AutoStartEnabled = () => AutoStart.IsEnabled,
 
+            SetStartMenu = StartMenu.Set,
+            StartMenuRegistered = () => StartMenu.IsRegistered,
+
             OpenConfigFolder = OpenConfigFolder,
             Providers = BuildProviderToggles(),
         };

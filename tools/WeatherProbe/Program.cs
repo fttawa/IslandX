@@ -45,6 +45,58 @@ if (args.Contains("--phira"))
 // （tlyric 格式判断错，自检全绿而线上一行译文都没有）。
 //
 // 只打印曲名与成绩。存档里的 me / tokens 一概不读 —— 解析器本身就只看 charts[]。
+if (args.Contains("--startmenu"))
+{
+    // IShellLink 的 vtable 顺序写错了会**静默失败**（调用跑到相邻的槽上），
+    // 所以必须做一次真正的往返：写 → 读回目标 → 删 → 确认没了。
+    //
+    // ⚠ 这个探针是独立 exe，所以写出来的快捷方式指向的是**探针自己**。
+    //
+    // 而且它写的是**真实的开始菜单目录**，用户可能已经在那里注册过 IslandX 了。
+    // 第一版测完直接删，把人家真正的快捷方式一起删掉了 ——
+    // **会破坏被测对象的探针比没有探针更糟**。所以先备份原有的目标路径，
+    // 测完原样写回去。
+    Console.WriteLine("=== 开始菜单注册往返（会真的写一次，测完恢复原状）===");
+
+    var lnkPath = System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.Programs), "IslandX.lnk");
+
+    byte[]? backup = System.IO.File.Exists(lnkPath)
+        ? System.IO.File.ReadAllBytes(lnkPath)
+        : null;
+
+    Console.WriteLine($"  原有快捷方式      : {(backup is null ? "无" : $"有（{backup.Length} 字节，测完原样写回）")}");
+
+    var before = StartMenu.IsRegistered;
+    Console.WriteLine($"  起始状态          : {(before ? "已注册" : "未注册")}");
+
+    var ok = StartMenu.Set(true);
+    Console.WriteLine($"  写入              : {(ok ? "成功" : "失败")}");
+
+    var link = System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.Programs), "IslandX.lnk");
+    Console.WriteLine($"  文件是否存在      : {System.IO.File.Exists(link)}");
+    Console.WriteLine($"  IsRegistered 回读 : {StartMenu.IsRegistered}");
+    Console.WriteLine($"  应指向            : {Environment.ProcessPath}");
+
+    var removed = StartMenu.Set(false);
+    Console.WriteLine($"  删除              : {(removed ? "成功" : "失败")}");
+    Console.WriteLine($"  清理后仍存在      : {System.IO.File.Exists(link)}");
+
+    // 把原有的那个还回去。整份字节写回，不重新生成 ——
+    // 重新生成出来的未必和用户原来那个一模一样（图标、窗口状态之类都在里面）
+    if (backup is not null)
+    {
+        System.IO.File.WriteAllBytes(lnkPath, backup);
+        Console.WriteLine($"  已恢复原有快捷方式: {System.IO.File.Exists(lnkPath)}");
+    }
+
+    var clean = ok && (backup is not null ? System.IO.File.Exists(link) : !System.IO.File.Exists(link));
+    Console.WriteLine();
+    Console.WriteLine(clean ? "OK 往返通过，原状已恢复" : "FAIL 往返失败");
+    return clean ? 0 : 2;
+}
+
 if (args.Contains("--zh"))
 {
     Console.WriteLine("=== 繁体 → 简体（LCMapStringEx）===");

@@ -94,6 +94,24 @@ public sealed class TrayIconHost : IDisposable
         _syncable.Add((autoStartItem, bridge.AutoStartEnabled));
         menu.Items.Add(autoStartItem);
 
+        // 加进开始菜单。绿色单文件没有安装器，「开始」里搜不到它 ——
+        // 勾上就在当前用户的开始菜单里放一个快捷方式
+        var startMenuItem = new WinForms.ToolStripMenuItem("加进开始菜单")
+        {
+            CheckOnClick = true,
+            Checked = bridge.StartMenuRegistered(),
+        };
+
+        startMenuItem.Click += (_, _) =>
+        {
+            if (!bridge.SetStartMenu(startMenuItem.Checked))
+                startMenuItem.Checked = !startMenuItem.Checked;
+        };
+
+        // 真值是磁盘上那个 .lnk，用户可以直接删掉它，所以也要弹出时重读
+        _syncable.Add((startMenuItem, bridge.StartMenuRegistered));
+        menu.Items.Add(startMenuItem);
+
         // 设置窗口是完整入口：手填坐标、行政区、热键这几项只有它能改。
         // 原来的「打开配置文件夹」不再单列 —— 它当初存在就是为了让人手改这几项，
         // 现在设置页覆盖了，而且页里自己也有那个按钮

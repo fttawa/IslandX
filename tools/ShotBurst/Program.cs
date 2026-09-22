@@ -33,6 +33,108 @@ using System.Text;
 // 存在的理由是托盘菜单 —— 它不在岛体的探针里，等不到"计数变化"，
 // 而 PowerShell 那边只能做 user32 的活（.NET 10 上 Add-Type 拼不起 System.Drawing，
 // 本项目踩过三次），截图这一步必须回到真项目里来。
+// 生成应用图标。跑一次、把产物提交进仓库即可，不是构建步骤 ——
+// 图标是会被人看的东西，应当能在版本控制里看到它变了没有，
+// 而不是每次构建都重新生成一个"应该一样"的文件。
+//
+// 形状沿用托盘图标那个 identity（黑底 + 亮胶囊），但**反了过来**：
+// 托盘图标画在系统托盘的固定背景上，黑胶囊看得清；
+// 而开始菜单／任务栏的底色深浅都有，纯黑形状在深色主题上会整个消失。
+// 所以这里给一个近黑的圆角方块当"应用砖块"，把胶囊做成亮色放在里面。
+if (args.Length >= 2 && args[0] == "--makeicon")
+{
+    var iconPath = args[1];
+    int[] sizes = [16, 20, 24, 32, 40, 48, 64, 128, 256];
+    var pngs = new List<byte[]>();
+
+    foreach (var size in sizes)
+    {
+        using var bmp = new Bitmap(size, size, PixelFormat.Format32bppArgb);
+        using (var g = Graphics.FromImage(bmp))
+        {
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.Clear(Color.Transparent);
+
+            // 圆角方块底。留 1/16 边距，免得贴边被系统再裁一次
+            var pad = size / 16f;
+            var side = size - pad * 2;
+            var radius = side * 0.24f;
+
+            using (var tile = RoundedRect(pad, pad, side, side, radius))
+            using (var fill = new SolidBrush(Color.FromArgb(255, 14, 14, 18)))
+                g.FillPath(fill, tile);
+
+            // 胶囊。宽 58%、高 22%，居中 —— 16px 下高度约 3.5px，
+            // 再细就糊成一条灰线了
+            var capW = size * 0.58f;
+            var capH = size * 0.22f;
+            var capX = (size - capW) / 2f;
+            var capY = (size - capH) / 2f;
+
+            using (var cap = RoundedRect(capX, capY, capW, capH, capH / 2f))
+            using (var light = new SolidBrush(Color.FromArgb(255, 242, 243, 247)))
+                g.FillPath(light, cap);
+
+            // 摄像头那个小孔。32px 以下画不出来，画了只会让胶囊看着脏
+            if (size >= 32)
+            {
+                var dot = capH * 0.46f;
+                using var hole = new SolidBrush(Color.FromArgb(255, 14, 14, 18));
+                g.FillEllipse(hole, capX + capH * 0.30f, capY + (capH - dot) / 2f, dot, dot);
+            }
+        }
+
+        using var ms = new MemoryStream();
+        bmp.Save(ms, ImageFormat.Png);
+        pngs.Add(ms.ToArray());
+    }
+
+    // ICO 容器。每一帧都存成 PNG —— Vista 起就支持，省去写 BMP + AND 掩码那一套
+    using (var fs = new FileStream(iconPath, FileMode.Create, FileAccess.Write))
+    using (var ico = new BinaryWriter(fs))
+    {
+        ico.Write((short)0);              // reserved
+        ico.Write((short)1);              // type = icon
+        ico.Write((short)sizes.Length);
+
+        var offset = 6 + 16 * sizes.Length;
+
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            // 宽高字段是一个字节，256 要写成 0
+            ico.Write((byte)(sizes[i] >= 256 ? 0 : sizes[i]));
+            ico.Write((byte)(sizes[i] >= 256 ? 0 : sizes[i]));
+            ico.Write((byte)0);           // 调色板数
+            ico.Write((byte)0);           // reserved
+            ico.Write((short)1);          // planes
+            ico.Write((short)32);         // 位深
+            ico.Write(pngs[i].Length);
+            ico.Write(offset);
+            offset += pngs[i].Length;
+        }
+
+        foreach (var png in pngs) ico.Write(png);
+    }
+
+    Console.WriteLine($"已生成 {iconPath}：{sizes.Length} 个尺寸（{string.Join(", ", sizes)}），"
+        + $"{new FileInfo(iconPath).Length} 字节");
+    return 0;
+}
+
+static System.Drawing.Drawing2D.GraphicsPath RoundedRect(float x, float y, float w, float h, float r)
+{
+    var path = new System.Drawing.Drawing2D.GraphicsPath();
+    var d = r * 2;
+
+    path.AddArc(x, y, d, d, 180, 90);
+    path.AddArc(x + w - d, y, d, d, 270, 90);
+    path.AddArc(x + w - d, y + h - d, d, d, 0, 90);
+    path.AddArc(x, y + h - d, d, d, 90, 90);
+    path.CloseFigure();
+
+    return path;
+}
+
 if (args.Length >= 6 && args[0] == "--rect")
 {
     var path = args[1];

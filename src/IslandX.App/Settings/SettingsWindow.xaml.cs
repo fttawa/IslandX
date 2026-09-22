@@ -141,6 +141,7 @@ public partial class SettingsWindow : Window
         RegionBox.Text = c.WeatherRegion ?? "";
 
         AutoStartBox.IsChecked = _bridge.AutoStartEnabled();
+        StartMenuBox.IsChecked = _bridge.StartMenuRegistered();
 
         ShowHotkey(HotkeyKind.Expand);
         ShowHotkey(HotkeyKind.Dot);
@@ -199,6 +200,9 @@ public partial class SettingsWindow : Window
 
         AutoStartBox.Checked += (_, _) => CommitAutoStart(true);
         AutoStartBox.Unchecked += (_, _) => CommitAutoStart(false);
+
+        StartMenuBox.Checked += (_, _) => CommitStartMenu(true);
+        StartMenuBox.Unchecked += (_, _) => CommitStartMenu(false);
 
         OpenFolderButton.Click += (_, _) => _bridge.OpenConfigFolder();
         CloseButton.Click += (_, _) => Close();
@@ -684,6 +688,25 @@ public partial class SettingsWindow : Window
     };
 
     // ================= 其它 =================
+
+    private void CommitStartMenu(bool enabled)
+    {
+        if (_loading) return;
+
+        // 和自启同一套：失败就把勾回弹并说明。这里失败多半是目录写不了
+        // （安全软件盯着开始菜单目录，那是常见的驻留位置）
+        if (_bridge.SetStartMenu(enabled))
+        {
+            StartMenuStatus.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        _loading = true;
+        StartMenuBox.IsChecked = !enabled;
+        _loading = false;
+
+        Status(StartMenuStatus, "写不进开始菜单 —— 可能被安全软件挡住了", ok: false);
+    }
 
     private void CommitAutoStart(bool enabled)
     {

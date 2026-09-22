@@ -519,8 +519,18 @@
                     <TextBlock Text="系统" Style="{StaticResource SectionTitle}"/>
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
-                            <CheckBox x:Name="AutoStartBox" Content="开机自动启动"/>
+                            <!-- 两个开关之间要自己留间距：中间那条状态提示平时是
+                                 Collapsed（不占位），没有 Margin 的话两个胶囊会贴死在一起。
+                                 别处的开关后面都跟着一条常驻的 Hint，所以看不出这个问题 -->
+                            <CheckBox x:Name="AutoStartBox" Content="开机自动启动"
+                                      Margin="0,0,0,12"/>
                             <TextBlock x:Name="AutoStartStatus" Style="{StaticResource Hint}"
+                                       Visibility="Collapsed"/>
+
+                            <CheckBox x:Name="StartMenuBox" Content="加进开始菜单"/>
+                            <TextBlock Style="{StaticResource Hint}"
+                                       Text="在当前用户的开始菜单里放一个快捷方式，这样「开始」里搜得到。绿色单文件没有安装器，不做这一步就只能自己记住 exe 放在哪。把 exe 挪走之后这里会变回未勾选 —— 快捷方式指向旧位置，重新勾一次即可修好。"/>
+                            <TextBlock x:Name="StartMenuStatus" Style="{StaticResource Hint}"
                                        Visibility="Collapsed"/>
 
                             <Border Height="1" Background="#0FFFFFFF" Margin="0,14"/>

@@ -60,6 +60,10 @@ public sealed class SettingsBridge
     public required Func<bool, bool> SetAutoStart { get; init; }
     public required Func<bool> AutoStartEnabled { get; init; }
 
+    /// <summary>开始菜单注册。和自启一样返回"是否达到了期望状态" —— 可能被策略挡住。</summary>
+    public required Func<bool, bool> SetStartMenu { get; init; }
+    public required Func<bool> StartMenuRegistered { get; init; }
+
     public required Action OpenConfigFolder { get; init; }
 
     /// <summary>可逐项开关的 Provider。</summary>
